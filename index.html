@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>SaisieSeanceErgolib</title>
+
+    <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .conteneur {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 26px;
+        }
+
+        .compte {
+            font-size: 14px;
+            margin-bottom: 20px;
+            color: #555;
+        }
+
+        label {
+            display: block;
+            margin-top: 18px;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input,
+        textarea,
+        button {
+            width: 100%;
+            font-size: 17px;
+        }
+
+        input,
+        textarea {
+            padding: 12px;
+            border: 1px solid #bbb;
+            border-radius: 7px;
+        }
+
+        textarea {
+            min-height: 160px;
+            resize: vertical;
+        }
+
+        button {
+            padding: 13px;
+            margin-top: 15px;
+            border: 0;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        #btnEnregistrer {
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        #etat {
+            margin-top: 18px;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .succes {
+            background: #e7f6e7;
+        }
+
+        .erreur {
+            background: #fdeaea;
+        }
+
+        .cache {
+            display: none;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="conteneur">
+
+    <h1>Saisie séance</h1>
+
+    <div id="zoneConnexion">
+
+        <button id="btnConnexion">
+            Connexion Microsoft
+        </button>
+
+    </div>
+
+    <div id="zoneApplication" class="cache">
+
+        <div id="compte" class="compte"></div>
+
+        <button id="btnChangerCompte">
+            Changer de compte Microsoft
+        </button>
+
+        <button id="btnOneDrive">
+            Ouvrir mon dossier OneDrive
+        </button>
+
+
+        <label for="dateSeance">
+            Date
+        </label>
+
+        <input type="date"
+               id="dateSeance">
+
+
+        <label for="nom">
+            Nom
+        </label>
+
+        <input type="text"
+               id="nom"
+               autocomplete="off">
+
+
+        <label for="prenom">
+            Prénom
+        </label>
+
+        <input type="text"
+               id="prenom"
+               autocomplete="off">
+
+
+        <label for="observations">
+            Observations de suivi
+        </label>
+
+        <textarea id="observations"></textarea>
+
+
+        <button id="btnEnregistrer">
+            Enregistrer la séance
+        </button>
+
+
+        <div id="etat"></div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+
+
+const msalConfig = {
+
+    auth: {
+
+        clientId:
+            "8f81d588-259b-4886-8b2d-f08d32def9d3",
+
+        authority:
+            "https://login.microsoftonline.com/common",
+
+        redirectUri:
+            "http://localhost:8080"
+
+    },
+
+    cache: {
+
+        cacheLocation:
+            "localStorage",
+
+        storeAuthStateInCookie:
+            false
+
+    }
+
+};
+
+
+const msalInstance =
+    new msal.PublicClientApplication(msalConfig);
+
+
+const scopes = [
+    "Files.ReadWrite.AppFolder"
+];
+
+
+const nomFichier =
+    "seances.json";
+
+
+let compteActif =
+    null;
+
+
+let urlDossierOneDrive =
+    null;
+
+
+
+/* =========================================================
+   ÉLÉMENTS HTML
+========================================================= */
+
+
+const zoneConnexion =
+    document.getElementById("zoneConnexion");
+
+
+const zoneApplication =
+    document.getElementById("zoneApplication");
+
+
+const btnConnexion =
+    document.getElementById("btnConnexion");
+
+
+const btnChangerCompte =
+    document.getElementById("btnChangerCompte");
+
+
+const btnOneDrive =
+    document.getElementById("btnOneDrive");
+
+
+const btnEnregistrer =
+    document.getElementById("btnEnregistrer");
+
+
+const compte =
+    document.getElementById("compte");
+
+
+const dateSeance =
+    document.getElementById("dateSeance");
+
+
+const nom =
+    document.getElementById("nom");
+
+
+const prenom =
+    document.getElementById("prenom");
+
+
+const observations =
+    document.getElementById("observations");
+
+
+const etat =
+    document.getElementById("etat");
+
+
+
+/* =========================================================
+   DATE DU JOUR
+========================================================= */
+
+
+function dateDuJourLocale() {
+
+    const d =
+        new Date();
+
+    return (
+        d.getFullYear()
+        + "-"
+        + String(d.getMonth() + 1).padStart(2, "0")
+        + "-"
+        + String(d.getDate()).padStart(2, "0")
+    );
+
+}
+
+
+dateSeance.value =
+    dateDuJourLocale();
+
+
+
+/* =========================================================
+   AFFICHAGE
+========================================================= */
+
+
+function afficherApplication() {
+
+    zoneConnexion.classList.add("cache");
+
+    zoneApplication.classList.remove("cache");
+
+    compte.innerText =
+        "Compte Microsoft : "
+        + compteActif.username;
+
+}
+
+
+function afficherMessage(
+    texte,
+    type = ""
+) {
+
+    etat.innerText =
+        texte;
+
+    etat.className =
+        type;
+
+}
+
+
+
+/* =========================================================
+   CONNEXION AUTOMATIQUE
+========================================================= */
+
+
+function verifierCompteExistant() {
+
+    const comptes =
+        msalInstance.getAllAccounts();
+
+
+    if (comptes.length > 0) {
+
+        compteActif =
+            comptes[0];
+
+        afficherApplication();
+
+    }
+
+}
+
+
+verifierCompteExistant();
+
+
+
+/* =========================================================
+   CONNEXION
+========================================================= */
+
+
+btnConnexion.addEventListener(
+    "click",
+    async function () {
+
+        try {
+
+            const resultat =
+                await msalInstance.loginPopup({
+
+                    scopes:
+                        scopes,
+
+                    prompt:
+                        "select_account"
+
+                });
+
+
+            compteActif =
+                resultat.account;
+
+
+            afficherApplication();
+
+
+        } catch (erreur) {
+
+            alert(
+                "Erreur de connexion : "
+                + erreur.message
+            );
+
+        }
+
+    }
+);
+
+
+
+/* =========================================================
+   CHANGEMENT DE COMPTE
+========================================================= */
+
+
+btnChangerCompte.addEventListener(
+    "click",
+    async function () {
+
+        try {
+
+            const resultat =
+                await msalInstance.loginPopup({
+
+                    scopes:
+                        scopes,
+
+                    prompt:
+                        "select_account"
+
+                });
+
+
+            compteActif =
+                resultat.account;
+
+
+            urlDossierOneDrive =
+                null;
+
+
+            afficherApplication();
+
+
+            afficherMessage(
+                "Compte changé."
+            );
+
+
+        } catch (erreur) {
+
+            afficherMessage(
+                "Erreur : "
+                + erreur.message,
+                "erreur"
+            );
+
+        }
+
+    }
+);
+
+
+
+/* =========================================================
+   TOKEN
+========================================================= */
+
+
+async function obtenirToken() {
+
+
+    if (!compteActif) {
+
+        throw new Error(
+            "Aucun compte actif."
+        );
+
+    }
+
+
+    try {
+
+        const resultat =
+            await msalInstance.acquireTokenSilent({
+
+                scopes:
+                    scopes,
+
+                account:
+                    compteActif
+
+            });
+
+
+        return resultat.accessToken;
+
+
+    } catch {
+
+        const resultat =
+            await msalInstance.acquireTokenPopup({
+
+                scopes:
+                    scopes,
+
+                account:
+                    compteActif
+
+            });
+
+
+        return resultat.accessToken;
+
+    }
+
+}
+
+
+
+/* =========================================================
+   DOSSIER ONEDRIVE
+========================================================= */
+
+
+async function obtenirDossierOneDrive() {
+
+
+    const token =
+        await obtenirToken();
+
+
+    const reponse =
+        await fetch(
+
+            "https://graph.microsoft.com/v1.0/me/drive/special/approot",
+
+            {
+
+                headers: {
+
+                    "Authorization":
+                        "Bearer " + token
+
+                }
+
+            }
+
+        );
+
+
+    if (!reponse.ok) {
+
+        const texte =
+            await reponse.text();
+
+        throw new Error(
+            "Impossible d'accéder au dossier OneDrive : "
+            + texte
+        );
+
+    }
+
+
+    const dossier =
+        await reponse.json();
+
+
+    urlDossierOneDrive =
+        dossier.webUrl;
+
+
+    return dossier;
+
+}
+
+
+
+/* =========================================================
+   BOUTON ONEDRIVE
+========================================================= */
+
+
+btnOneDrive.addEventListener(
+    "click",
+    async function () {
+
+        try {
+
+            if (!urlDossierOneDrive) {
+
+                await obtenirDossierOneDrive();
+
+            }
+
+
+            window.open(
+                urlDossierOneDrive,
+                "_blank"
+            );
+
+
+        } catch (erreur) {
+
+            afficherMessage(
+                erreur.message,
+                "erreur"
+            );
+
+        }
+
+    }
+);
+
+
+
+/* =========================================================
+   URL FICHIER
+========================================================= */
+
+
+function urlFichier() {
+
+    return (
+        "https://graph.microsoft.com/v1.0/"
+        + "me/drive/special/approot:/"
+        + nomFichier
+        + ":/content"
+    );
+
+}
+
+
+
+/* =========================================================
+   LECTURE seances.json
+========================================================= */
+
+
+async function lireSeances(token) {
+
+
+    const reponse =
+        await fetch(
+
+            urlFichier(),
+
+            {
+
+                method:
+                    "GET",
+
+                headers: {
+
+                    "Authorization":
+                        "Bearer " + token
+
+                }
+
+            }
+
+        );
+
+
+    if (reponse.status === 404) {
+
+        return {
+
+            seances: [],
+
+            etag: null
+
+        };
+
+    }
+
+
+    if (!reponse.ok) {
+
+        const texte =
+            await reponse.text();
+
+        throw new Error(
+            "Lecture impossible : HTTP "
+            + reponse.status
+            + " "
+            + texte
+        );
+
+    }
+
+
+    const etag =
+        reponse.headers.get("ETag");
+
+
+    const texte =
+        await reponse.text();
+
+
+    if (texte.trim() === "") {
+
+        return {
+
+            seances: [],
+
+            etag: etag
+
+        };
+
+    }
+
+
+    const donnees =
+        JSON.parse(texte);
+
+
+    if (!Array.isArray(donnees)) {
+
+        throw new Error(
+            "Le fichier seances.json n'est pas au bon format."
+        );
+
+    }
+
+
+    return {
+
+        seances:
+            donnees,
+
+        etag:
+            etag
+
+    };
+
+}
+
+
+
+/* =========================================================
+   ÉCRITURE
+========================================================= */
+
+
+async function ecrireSeances(
+    token,
+    seances,
+    etag
+) {
+
+
+    const headers = {
+
+        "Authorization":
+            "Bearer " + token,
+
+        "Content-Type":
+            "application/json"
+
+    };
+
+
+    if (etag) {
+
+        headers["If-Match"] =
+            etag;
+
+    }
+
+
+    return await fetch(
+
+        urlFichier(),
+
+        {
+
+            method:
+                "PUT",
+
+            headers:
+                headers,
+
+            body:
+                JSON.stringify(
+                    seances,
+                    null,
+                    2
+                )
+
+        }
+
+    );
+
+}
+
+
+
+/* =========================================================
+   ENREGISTREMENT
+========================================================= */
+
+
+btnEnregistrer.addEventListener(
+    "click",
+    async function () {
+
+
+        try {
+
+
+            if (!dateSeance.value) {
+
+                afficherMessage(
+                    "La date est obligatoire.",
+                    "erreur"
+                );
+
+                return;
+
+            }
+
+
+            if (!nom.value.trim()) {
+
+                afficherMessage(
+                    "Le nom est obligatoire.",
+                    "erreur"
+                );
+
+                nom.focus();
+
+                return;
+
+            }
+
+
+            if (!prenom.value.trim()) {
+
+                afficherMessage(
+                    "Le prénom est obligatoire.",
+                    "erreur"
+                );
+
+                prenom.focus();
+
+                return;
+
+            }
+
+
+            btnEnregistrer.disabled =
+                true;
+
+
+            afficherMessage(
+                "Enregistrement en cours..."
+            );
+
+
+            const token =
+                await obtenirToken();
+
+
+            const nouvelleSeance = {
+
+                date:
+                    dateSeance.value,
+
+                nom:
+                    nom.value.trim(),
+
+                prenom:
+                    prenom.value.trim(),
+
+                observations:
+                    observations.value.trim(),
+
+                dateEnregistrement:
+                    new Date().toISOString()
+
+            };
+
+
+            let enregistre =
+                false;
+
+
+            for (
+                let tentative = 1;
+                tentative <= 3;
+                tentative++
+            ) {
+
+
+                const lecture =
+                    await lireSeances(token);
+
+
+                lecture.seances.push(
+                    nouvelleSeance
+                );
+
+
+                const reponse =
+                    await ecrireSeances(
+
+                        token,
+
+                        lecture.seances,
+
+                        lecture.etag
+
+                    );
+
+
+                if (reponse.ok) {
+
+                    enregistre =
+                        true;
+
+                    break;
+
+                }
+
+
+                if (reponse.status === 412) {
+
+                    continue;
+
+                }
+
+
+                const texte =
+                    await reponse.text();
+
+
+                throw new Error(
+                    "Erreur écriture : HTTP "
+                    + reponse.status
+                    + " "
+                    + texte
+                );
+
+            }
+
+
+            if (!enregistre) {
+
+                throw new Error(
+                    "Impossible d'enregistrer la séance. Réessayez."
+                );
+
+            }
+
+
+            afficherMessage(
+                "✓ Séance enregistrée",
+                "succes"
+            );
+
+
+            nom.value =
+                "";
+
+
+            prenom.value =
+                "";
+
+
+            observations.value =
+                "";
+
+
+            dateSeance.value =
+                dateDuJourLocale();
+
+
+            nom.focus();
+
+
+        } catch (erreur) {
+
+
+            console.error(erreur);
+
+
+            afficherMessage(
+                "Erreur : "
+                + erreur.message,
+                "erreur"
+            );
+
+
+        } finally {
+
+
+            btnEnregistrer.disabled =
+                false;
+
+        }
+
+    }
+);
+
+
+</script>
+
+</body>
+
+</html>
