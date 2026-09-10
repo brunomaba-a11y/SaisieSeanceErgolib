@@ -481,51 +481,45 @@ btnChangerCompte.addEventListener(
 
 async function obtenirToken() {
 
-
     if (!compteActif) {
-
-        throw new Error(
-            "Aucun compte actif."
-        );
-
+        throw new Error("Aucun compte actif.");
     }
-
 
     try {
 
-        const resultat =
-            await msalInstance.acquireTokenSilent({
-
-                scopes:
-                    scopes,
-
-                account:
-                    compteActif
-
-            });
-
+        // On essaie d'abord sans aucune interaction utilisateur
+        const resultat = await msalInstance.acquireTokenSilent({
+            scopes: scopes,
+            account: compteActif
+        });
 
         return resultat.accessToken;
 
+    } catch (erreur) {
 
-    } catch {
+        console.warn(
+            "Acquisition silencieuse impossible :",
+            erreur
+        );
 
-        const resultat =
-            await msalInstance.acquireTokenPopup({
+        // IMPORTANT :
+        // On ne lance une popup que si MSAL indique réellement
+        // qu'une interaction utilisateur est nécessaire.
 
-                scopes:
-                    scopes,
+        if (erreur instanceof msal.InteractionRequiredAuthError) {
 
-                account:
-                    compteActif
-
+            const resultat = await msalInstance.acquireTokenPopup({
+                scopes: scopes,
+                account: compteActif
             });
 
+            return resultat.accessToken;
+        }
 
-        return resultat.accessToken;
-
+        // Toute autre erreur est remontée.
+        // Cela évite notamment les popups imbriquées.
+        throw erreur;
     }
-
 }
 
 
