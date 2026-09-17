@@ -354,25 +354,86 @@ function afficherMessage(
 ========================================================= */
 
 
-function verifierCompteExistant() {
+const CLE_BROUILLON = "ERGOLIB_BROUILLON_SEANCE";
 
-    const comptes =
-        msalInstance.getAllAccounts();
+function sauvegarderBrouillon() {
+    const brouillon = {
+        date: dateSeance.value,
+        nom: nom.value,
+        prenom: prenom.value,
+        observations: observations.value
+    };
 
-
-    if (comptes.length > 0) {
-
-        compteActif =
-            comptes[0];
-
-        afficherApplication();
-
-    }
-
+    sessionStorage.setItem(
+        CLE_BROUILLON,
+        JSON.stringify(brouillon)
+    );
 }
 
 
-verifierCompteExistant();
+function restaurerBrouillon() {
+    const texte = sessionStorage.getItem(CLE_BROUILLON);
+
+    if (!texte) {
+        return;
+    }
+
+    try {
+        const brouillon = JSON.parse(texte);
+
+        if (brouillon.date) {
+            dateSeance.value = brouillon.date;
+        }
+
+        nom.value = brouillon.nom || "";
+        prenom.value = brouillon.prenom || "";
+        observations.value = brouillon.observations || "";
+
+        afficherMessage(
+            "Connexion Microsoft renouvelée. Votre saisie a été conservée. Cliquez sur « Enregistrer la séance ».",
+            "succes"
+        );
+
+    } catch (erreur) {
+        console.warn("Brouillon ERGOLIB illisible :", erreur);
+    }
+}
+
+
+async function initialiserApplication() {
+
+    try {
+        const resultatRedirection =
+            await msalInstance.handleRedirectPromise();
+
+        if (resultatRedirection && resultatRedirection.account) {
+            compteActif = resultatRedirection.account;
+        } else {
+            const comptes = msalInstance.getAllAccounts();
+
+            // On ne choisit automatiquement un compte que s'il n'y en a qu'un.
+            if (comptes.length === 1) {
+                compteActif = comptes[0];
+            }
+        }
+
+        if (compteActif) {
+            afficherApplication();
+            restaurerBrouillon();
+        }
+
+    } catch (erreur) {
+        console.error("Erreur d'initialisation MSAL :", erreur);
+
+        afficherMessage(
+            "Erreur d'initialisation Microsoft : " + erreur.message,
+            "erreur"
+        );
+    }
+}
+
+
+initialiserApplication();
 
 
 
@@ -496,16 +557,33 @@ async function obtenirToken() {
         return resultat.accessToken;
 
     } catch (erreur) {
-        console.error(
-            "Impossible d'obtenir silencieusement le jeton Microsoft :",
+
+        console.warn(
+            "Acquisition silencieuse impossible :",
             erreur
         );
 
-        throw new Error(
-            "Votre connexion Microsoft a expiré. " +
-            "Cliquez sur « Changer de compte Microsoft », " +
-            "puis enregistrez à nouveau la séance."
-        );
+        if (erreur instanceof msal.InteractionRequiredAuthError) {
+
+            // On sauvegarde toute la saisie avant de quitter la page.
+            sauvegarderBrouillon();
+
+            afficherMessage(
+                "Renouvellement de la connexion Microsoft...",
+                ""
+            );
+
+            // Pas de popup : redirection Microsoft, donc pas de blocage navigateur.
+            await msalInstance.acquireTokenRedirect({
+                scopes: scopes,
+                account: compteActif
+            });
+
+            // acquireTokenRedirect quitte normalement la page.
+            return null;
+        }
+
+        throw erreur;
     }
 }
 
@@ -950,6 +1028,9 @@ btnEnregistrer.addEventListener(
                 "✓ Séance enregistrée",
                 "succes"
             );
+
+
+            sessionStorage.removeItem(CLE_BROUILLON);
 
 
             nom.value =
