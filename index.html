@@ -355,6 +355,7 @@ function afficherMessage(
 
 
 const CLE_BROUILLON = "ERGOLIB_BROUILLON_SEANCE";
+const CLE_REPRISE_ENREGISTREMENT = "ERGOLIB_REPRISE_ENREGISTREMENT";
 
 function sauvegarderBrouillon() {
     const brouillon = {
@@ -390,8 +391,8 @@ function restaurerBrouillon() {
         observations.value = brouillon.observations || "";
 
         afficherMessage(
-            "Connexion Microsoft renouvelée. Votre saisie a été conservée. Cliquez sur « Enregistrer la séance ».",
-            "succes"
+            "Connexion Microsoft renouvelée. Enregistrement de la séance...",
+            ""
         );
 
     } catch (erreur) {
@@ -419,7 +420,22 @@ async function initialiserApplication() {
 
         if (compteActif) {
             afficherApplication();
-            restaurerBrouillon();
+
+            const repriseEnregistrement =
+                sessionStorage.getItem(CLE_REPRISE_ENREGISTREMENT) === "1";
+
+            if (repriseEnregistrement) {
+                restaurerBrouillon();
+
+                // On efface le drapeau AVANT de reprendre afin d'éviter
+                // une boucle ou un double enregistrement après rechargement.
+                sessionStorage.removeItem(CLE_REPRISE_ENREGISTREMENT);
+
+                // Laisse l'interface finir de se réafficher avant la reprise.
+                setTimeout(() => {
+                    boutonEnregistrer.click();
+                }, 100);
+            }
         }
 
     } catch (erreur) {
@@ -565,8 +581,10 @@ async function obtenirToken() {
 
         if (erreur instanceof msal.InteractionRequiredAuthError) {
 
-            // On sauvegarde toute la saisie avant de quitter la page.
+            // On sauvegarde toute la saisie et on mémorise qu'un
+            // enregistrement devra reprendre automatiquement au retour.
             sauvegarderBrouillon();
+            sessionStorage.setItem(CLE_REPRISE_ENREGISTREMENT, "1");
 
             afficherMessage(
                 "Renouvellement de la connexion Microsoft...",
@@ -1031,6 +1049,7 @@ btnEnregistrer.addEventListener(
 
 
             sessionStorage.removeItem(CLE_BROUILLON);
+            sessionStorage.removeItem(CLE_REPRISE_ENREGISTREMENT);
 
 
             nom.value =
