@@ -482,12 +482,12 @@ btnChangerCompte.addEventListener(
 async function obtenirToken() {
 
     if (!compteActif) {
-        throw new Error("Aucun compte actif.");
+        throw new Error(
+            "Vous devez vous connecter à Microsoft avant d'enregistrer une séance."
+        );
     }
 
     try {
-
-        // On essaie d'abord sans aucune interaction utilisateur
         const resultat = await msalInstance.acquireTokenSilent({
             scopes: scopes,
             account: compteActif
@@ -496,32 +496,18 @@ async function obtenirToken() {
         return resultat.accessToken;
 
     } catch (erreur) {
-
-        console.warn(
-            "Acquisition silencieuse impossible :",
+        console.error(
+            "Impossible d'obtenir silencieusement le jeton Microsoft :",
             erreur
         );
 
-        // IMPORTANT :
-        // On ne lance une popup que si MSAL indique réellement
-        // qu'une interaction utilisateur est nécessaire.
-
-        if (erreur instanceof msal.InteractionRequiredAuthError) {
-
-            const resultat = await msalInstance.acquireTokenPopup({
-                scopes: scopes,
-                account: compteActif
-            });
-
-            return resultat.accessToken;
-        }
-
-        // Toute autre erreur est remontée.
-        // Cela évite notamment les popups imbriquées.
-        throw erreur;
+        throw new Error(
+            "Votre connexion Microsoft a expiré. " +
+            "Cliquez sur « Changer de compte Microsoft », " +
+            "puis enregistrez à nouveau la séance."
+        );
     }
 }
-
 
 
 /* =========================================================
