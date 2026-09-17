@@ -464,23 +464,10 @@ btnConnexion.addEventListener(
 
         try {
 
-            const resultat =
-                await msalInstance.loginPopup({
-
-                    scopes:
-                        scopes,
-
-                    prompt:
-                        "select_account"
-
-                });
-
-
-            compteActif =
-                resultat.account;
-
-
-            afficherApplication();
+            await msalInstance.loginRedirect({
+            scopes: scopes,
+            prompt: "select_account"
+        });
 
 
         } catch (erreur) {
@@ -509,7 +496,7 @@ btnChangerCompte.addEventListener(
         try {
 
             const resultat =
-                await msalInstance.loginPopup({
+                await msalInstance.loginRedirect({
 
                     scopes:
                         scopes,
